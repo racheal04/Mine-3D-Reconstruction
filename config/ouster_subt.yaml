@@ -1,0 +1,35 @@
+common:
+    lid_topic: "/os_cloud_node/points"
+    imu_topic: "/chinook/imu/data"
+    time_sync_en: false
+    time_offset_lidar_to_imu: 0.0
+
+preprocess:
+    lidar_type: 3                # 3 = OUST64
+    scan_line: 64
+    scan_rate: 10
+    timestamp_unit: 3            # 3 = nanoseconds (Ouster convention)
+    blind: 4
+
+mapping:
+    acc_cov: 0.1
+    gyr_cov: 0.1
+    b_acc_cov: 0.0001
+    b_gyr_cov: 0.0001
+    fov_degree:    360
+    det_range:     150.0
+    extrinsic_est_en:  true
+    extrinsic_T: [0.0, 0.0, 0.0]
+    extrinsic_R: [1,  0, 0,
+                  0, -1, 0,
+                  0,  0, -1]
+
+publish:
+    path_en:  true
+    scan_publish_en:  true
+    dense_publish_en: true
+    scan_bodyframe_pub_en: true
+
+pcd_save:
+    pcd_save_en: true
+    interval: -1

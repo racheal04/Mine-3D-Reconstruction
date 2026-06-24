@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>FAST-LIO2 实时点云 + 网格</title>
+<style>
+  body { margin:0; overflow:hidden; background:#1a1a2e; font-family:monospace; }
+  #info { position:absolute; top:10px; left:10px; color:#0f0; font-size:14px;
+          background:rgba(0,0,0,0.7); padding:8px 12px; border-radius:4px; z-index:10; }
+  #controls { position:absolute; top:10px; right:10px; background:rgba(0,0,0,0.7);
+              padding:10px; border-radius:4px; z-index:10; color:#ccc; font-size:12px; }
+  #controls button { margin:2px; padding:4px 8px; cursor:pointer; background:#333; color:#fff; border:1px solid #555; border-radius:3px; }
+  #controls button.active { background:#0a0; border-color:#0f0; }
+</style>
+</head>
+<body>
+<div id="info">FAST-LIO2 实时三维 | 等待数据...</div>
+<div id="controls">
+  <button id="btnPts" class="active" onclick="setMode('points')">点云模式</button>
+  <button id="btnMesh" onclick="setMode('mesh')">网格模式</button>
+  <button id="btnBoth" onclick="setMode('both')">混合模式</button>
+  <br><span style="font-size:10px">鼠标: 旋转/平移/缩放</span>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+               "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { PLYLoader } from 'three/addons/loaders/PLYLoader.js';
+import { PCDLoader } from 'three/addons/loaders/PCDLoader.js';
+
+// Scene
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0a14);
+scene.fog = new THREE.Fog(0x0a0a14, 80, 200);
+
+// Camera — start inside/above looking down
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.05, 300);
+camera.position.set(30, 15, 10);
+camera.lookAt(0, 0, -5);
+
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.target.set(0, 0, -5);
+controls.update();
+
+// Lighting
+scene.add(new THREE.AmbientLight(0x404060, 3));
+const dirLight = new THREE.DirectionalLight(0xffffff, 4);
+dirLight.position.set(20, 30, 10);
+scene.add(dirLight);
+scene.add(new THREE.DirectionalLight(0x8888ff, 1).translateX(-10));
+
+// Grid + axes
+scene.add(new THREE.GridHelper(100, 100, 0x333333, 0x222222));
+
+// Data containers
+let pointCloud = null;
+let currentMesh = null;
+let lastMeshFile = '';
+let lastPtsFile = '';
+const MESH_DIR = '/';
+const POLL_INTERVAL = 3000;
+
+// FAST-LIO2 Z=up, Three.js Y=up — correction matrix
+const coordFix = new THREE.Matrix4().makeRotationX(-Math.PI/2);
+
+window.setMode = function(mode) {
+  document.querySelectorAll('#controls button').forEach(b => b.classList.remove('active'));
+  document.getElementById(mode === 'points' ? 'btnPts' : mode === 'mesh' ? 'btnMesh' : 'btnBoth').classList.add('active');
+
+  if (pointCloud) pointCloud.visible = (mode === 'points' || mode === 'both');
+  if (currentMesh) currentMesh.visible = (mode === 'mesh' || mode === 'both');
+};
+
+// Load point cloud from PLY (binary or ascii)
+function loadPointCloud(filename) {
+  const loader = new PLYLoader();
+  loader.load(MESH_DIR + filename, (geometry) => {
+    if (pointCloud) scene.remove(pointCloud);
+
+    geometry.computeVertexNormals();
+
+    // Color by Z height
+    const pos = geometry.attributes.position;
+    const colors = new Float32Array(pos.count * 3);
+    const zArr = pos.array;
+    let zMin=Infinity, zMax=-Infinity;
+    for (let i=2; i<zArr.length; i+=3) {
+      if (zArr[i] < zMin) zMin = zArr[i];
+      if (zArr[i] > zMax) zMax = zArr[i];
+    }
+    const zRange = zMax - zMin || 1;
+    for (let i=0; i<pos.count; i++) {
+      const t = Math.max(0, Math.min(1, (zArr[i*3+2] - zMin) / zRange));
+      // Blue-green-yellow-red heatmap
+      const r = t<0.5 ? t*2 : 1;
+      const g = t<0.5 ? 0.5+t : 2-t*2;
+      const b = 1 - t;
+      colors[i*3]=r; colors[i*3+1]=g; colors[i*3+2]=b;
+    }
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+    // Convert to points
+    const mat = new THREE.PointsMaterial({
+      size: 0.15, vertexColors: true, blending: THREE.NormalBlending,
+      depthTest: true, depthWrite: true, sizeAttenuation: true
+    });
+    pointCloud = new THREE.Points(geometry, mat);
+    pointCloud.applyMatrix4(coordFix);
+    scene.add(pointCloud);
+
+    lastPtsFile = filename;
+    document.getElementById('info').innerHTML =
+      `点云: <b>${filename}</b> | ${pos.count.toLocaleString()} pts`;
+  });
+}
+
+// Load mesh
+function loadMesh(filename) {
+  const loader = new PLYLoader();
+  loader.load(MESH_DIR + filename, (geometry) => {
+    if (currentMesh) scene.remove(currentMesh);
+
+    geometry.computeVertexNormals();
+    const pos = geometry.attributes.position;
+
+    // Vertex colors by height
+    const colors = new Float32Array(pos.count * 3);
+    const zArr = pos.array;
+    let zMin=Infinity, zMax=-Infinity;
+    for (let i=2; i<zArr.length; i+=3) {
+      if (zArr[i] < zMin) zMin = zArr[i];
+      if (zArr[i] > zMax) zMax = zArr[i];
+    }
+    const zRange = zMax - zMin || 1;
+    for (let i=0; i<pos.count; i++) {
+      const t = Math.max(0, Math.min(1, (zArr[i*3+2] - zMin) / zRange));
+      colors[i*3]=t; colors[i*3+1]=0.5+t*0.3; colors[i*3+2]=1-t;
+    }
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+    const mat = new THREE.MeshPhongMaterial({
+      vertexColors: true, side: THREE.DoubleSide,
+      specular: 0x111111, shininess: 5,
+      transparent: true, opacity: 0.8
+    });
+    currentMesh = new THREE.Mesh(geometry, mat);
+    currentMesh.applyMatrix4(coordFix);
+    scene.add(currentMesh);
+
+    // Wireframe
+    const wire = new THREE.LineSegments(
+      new THREE.WireframeGeometry(geometry),
+      new THREE.LineBasicMaterial({color:0x000000, transparent:true, opacity:0.03})
+    );
+    currentMesh.add(wire);
+
+    lastMeshFile = filename;
+    document.getElementById('info').innerHTML =
+      `网格: <b>${filename}</b> | ${pos.count.toLocaleString()} verts | `
+      + `${(geometry.index?geometry.index.count/3:pos.count/3).toLocaleString()} faces`;
+  });
+}
+
+// Poll for new files
+async function findLatest(prefix) {
+  try {
+    const resp = await fetch(MESH_DIR);
+    const text = await resp.text();
+    const re = new RegExp(prefix + '_\\d+\\.ply', 'g');
+    const matches = text.match(re);
+    if (!matches || matches.length === 0) return null;
+    matches.sort();
+    return matches[matches.length - 1];
+  } catch(e) { return null; }
+}
+
+setInterval(async () => {
+  // Try cloud_*.ply first (point cloud), fall back to mesh_*.ply
+  let cloudFile = await findLatest('cloud');
+  if (cloudFile && cloudFile !== lastPtsFile) {
+    loadPointCloud(cloudFile);
+  }
+  let meshFile = await findLatest('mesh');
+  if (meshFile && meshFile !== lastMeshFile) {
+    loadMesh(meshFile);
+  }
+}, POLL_INTERVAL);
+
+// Animate
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,35 @@
+<launch>
+  <!-- FAST-LIO2 for Robosense RS-LiDAR-16 + LITEF IMU (SubSurfaceGeoRobo) -->
+
+    <param name="/use_sim_time" type="bool" value="true"/>
+
+    <arg name="rviz" default="true" />
+
+    <rosparam command="load" file="$(find fast_lio)/config/robosense16.yaml" />
+
+    <param name="feature_extract_enable" type="bool" value="0"/>
+    <param name="point_filter_num" type="int" value="4"/>
+    <param name="max_iteration" type="int" value="3" />
+    <param name="filter_size_surf" type="double" value="0.5" />
+    <param name="filter_size_map" type="double" value="0.5" />
+    <param name="cube_side_length" type="double" value="1000" />
+    <param name="runtime_pos_log_enable" type="bool" value="0" />
+
+    <node pkg="fast_lio" type="fastlio_mapping" name="laserMapping" output="screen" />
+
+    <!-- ScanContext Loop Closure -->
+    <node pkg="fast_lio" type="laserLoopClosure" name="laserLoopClosure" output="screen">
+        <param name="keyframe_dist_threshold" type="double" value="0.5"/>
+        <param name="keyframe_angle_threshold" type="double" value="0.2"/>
+        <param name="icp_fitness_threshold" type="double" value="0.4"/>
+        <param name="loop_frequency" type="double" value="1.0"/>
+        <param name="num_exclude_recent" type="int" value="30"/>
+        <param name="sc_dist_threshold" type="double" value="0.25"/>
+        <param name="sc_max_radius" type="double" value="60.0"/>
+    </node>
+
+    <group if="$(arg rviz)">
+    <node launch-prefix="nice" pkg="rviz" type="rviz" name="rviz" args="-d $(find fast_lio)/rviz_cfg/loam_livox.rviz" />
+    </group>
+
+</launch>
