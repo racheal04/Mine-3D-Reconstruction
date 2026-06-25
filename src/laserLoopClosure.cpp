@@ -220,6 +220,7 @@ private:
 
         keyframes_.push_back(kf);
         keyframe_poses_.push_back(latest_pose_);
+        poses_raw_odom_.push_back(latest_pose_);   // permanently save raw odometry
 
         // Store ScanContext descriptor
         sc_manager_.makeAndSaveScancontextAndKeys(*latest_cloud_sc_);
@@ -278,8 +279,8 @@ private:
         LoopEdge edge;
         edge.idx_from = cur_idx;
         edge.idx_to = loop_idx;
-        Eigen::Matrix4f T_i = keyframe_poses_[cur_idx];
-        Eigen::Matrix4f T_j = keyframe_poses_[loop_idx];
+        Eigen::Matrix4f T_i = poses_raw_odom_[cur_idx];   // use raw odometry (fixed frame)
+        Eigen::Matrix4f T_j = poses_raw_odom_[loop_idx];  // use raw odometry (fixed frame)
         edge.transform = T_i.inverse() * loop_transform.inverse() * T_j;
         loop_edges_.push_back(edge);
 
@@ -411,11 +412,11 @@ private:
         int N = keyframes_.size();
         if (N < 2) return;
 
-        // Use ORIGINAL (odometry) poses as fixed measurements for odometry edges
-        // The mutable keyframe_poses_ are optimized, but measurements stay fixed.
-        std::vector<Eigen::Matrix4f> poses_original(N);
-        for (int i = 0; i < N; i++)
-            poses_original[i] = keyframes_[i].pose;
+        // Use RAW SLAM odometry as fixed measurements (never modified by optimization).
+        // Previously re-read from keyframes_[i].pose each call, which caused
+        // odometry constraints to "drift" with optimization — preventing loop
+        // closure corrections from accumulating (max_update=0 bug).
+        const auto& poses_original = poses_raw_odom_;
 
         int max_iterations = 15;
         for (int iter = 0; iter < max_iterations; iter++) {
@@ -452,7 +453,7 @@ private:
                 // Error: log( (T_i^{-1} * T_j)^{-1} * T_meas )
                 Eigen::Matrix<float, 6, 1> e = se3Log(T_j.inverse() * T_i * T_meas);
 
-                Eigen::Matrix<float, 6, 6> info = Eigen::Matrix<float, 6, 6>::Identity() * 20.0;
+                Eigen::Matrix<float, 6, 6> info = Eigen::Matrix<float, 6, 6>::Identity() * 500.0;  // same weight as odometry
 
                 int idx_i = 6 * i, idx_j = 6 * j;
                 addJacobianBlock(triplets, b, idx_i, idx_j, info, e);
@@ -605,6 +606,7 @@ private:
     // Keyframe database
     std::vector<KeyFrame> keyframes_;
     std::vector<Eigen::Matrix4f> keyframe_poses_;  // mutable copy for optimization
+    std::vector<Eigen::Matrix4f> poses_raw_odom_;   // raw SLAM odometry (fixed, never optimized)
     std::vector<LoopEdge> loop_edges_;
 
     // ScanContext manager
