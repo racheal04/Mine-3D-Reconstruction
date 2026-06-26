@@ -4,15 +4,24 @@
 <meta charset="UTF-8">
 <title>FAST-LIO2 矿道实时建模</title>
 <style>
-  body { margin:0; overflow:hidden; background:#0a0a14; font-family:monospace; }
-  #info { position:absolute; top:10px; left:10px; color:#0f0; font-size:13px;
-          background:rgba(0,0,0,0.7); padding:8px 12px; border-radius:4px; z-index:10; }
-  #status { position:absolute; bottom:10px; left:10px; color:#666; font-size:10px;
-            background:rgba(0,0,0,0.5); padding:4px 8px; border-radius:3px; z-index:10; }
+  body { margin:0; overflow:hidden; background:#2a2a3a; font-family:monospace; }
+  #info { position:absolute; top:10px; left:10px; color:#fff; font-size:13px;
+          background:rgba(0,0,0,0.6); padding:8px 12px; border-radius:4px; z-index:10; }
+  #status { position:absolute; bottom:10px; left:10px; color:#aaa; font-size:10px;
+            background:rgba(0,0,0,0.4); padding:4px 8px; border-radius:3px; z-index:10; }
+  #controls { position:absolute; top:10px; right:10px; z-index:10; display:flex; gap:5px; }
+  #controls button { padding:6px 14px; border:1px solid #777; border-radius:4px;
+                     background:rgba(0,0,0,0.5); color:#ccc; cursor:pointer; font-size:12px; }
+  #controls button.active { background:rgba(60,140,60,0.8); border-color:#0f0; color:#fff; }
 </style>
 </head>
 <body>
 <div id="info">等待数据...</div>
+<div id="controls">
+  <button id="btnPts" onclick="setMode('points')">点云</button>
+  <button id="btnBoth" class="active" onclick="setMode('both')">混合</button>
+  <button id="btnMesh" onclick="setMode('mesh')">网格</button>
+</div>
 <div id="status">轮询 /tmp/meshes/ 每3秒</div>
 
 <script type="importmap">
@@ -27,8 +36,8 @@ import { PLYLoader } from 'three/addons/loaders/PLYLoader.js';
 
 // Scene
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0a0a14);
-scene.fog = new THREE.Fog(0x0a0a14, 60, 300);
+scene.background = new THREE.Color(0x8899aa);
+scene.fog = new THREE.Fog(0x8899aa, 80, 400);
 
 const camera = new THREE.PerspectiveCamera(65, innerWidth/innerHeight, 0.1, 500);
 camera.position.set(20, 15, 25);
@@ -45,15 +54,24 @@ controls.target.set(0, 0, 0);
 controls.update();
 
 // Lighting
-scene.add(new THREE.AmbientLight(0x404060, 2.5));
-const sun = new THREE.DirectionalLight(0xffeedd, 5);
+scene.add(new THREE.AmbientLight(0xffffff, 3.0));
+const sun = new THREE.DirectionalLight(0xffffff, 4);
 sun.position.set(30, 40, 20);
 scene.add(sun);
-scene.add(new THREE.DirectionalLight(0x6688cc, 2).translateX(-20));
-scene.add(new THREE.HemisphereLight(0x8888ff, 0x443322, 1));
+scene.add(new THREE.DirectionalLight(0xccccff, 2).translateX(-20));
+scene.add(new THREE.HemisphereLight(0xffffff, 0x886644, 1.5));
 
 // Grid
-scene.add(new THREE.GridHelper(200, 100, 0x333344, 0x1a1a2a));
+scene.add(new THREE.GridHelper(200, 100, 0x888888, 0xcccccc));
+
+// Mode switching
+window.setMode = function(mode) {
+  document.querySelectorAll('#controls button').forEach(b => b.classList.remove('active'));
+  const btnId = mode === 'points' ? 'btnPts' : mode === 'mesh' ? 'btnMesh' : 'btnBoth';
+  document.getElementById(btnId).classList.add('active');
+  if (pointCloud) pointCloud.visible = (mode === 'points' || mode === 'both');
+  if (currentMesh) currentMesh.visible = (mode === 'mesh' || mode === 'both');
+};
 
 // Data
 let pointCloud = null, currentMesh = null;
@@ -113,7 +131,7 @@ function loadMesh(name) {
       }
       g.setAttribute('color', new THREE.BufferAttribute(c, 3));
     }
-    const mat = new THREE.MeshPhongMaterial({vertexColors:true, side:THREE.DoubleSide, shininess:5});
+    const mat = new THREE.MeshStandardMaterial({vertexColors:true, side:THREE.DoubleSide, roughness:0.6, metalness:0.1});
     currentMesh = new THREE.Mesh(g, mat);
     currentMesh.applyMatrix4(FIX);
     scene.add(currentMesh);

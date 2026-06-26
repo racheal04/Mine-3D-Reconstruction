@@ -1060,3 +1060,28 @@ python3 ~/mine_project/scripts/offline_reconstruct.py \
 ### 接入 RTK 的代码修改 (后续实现)
 
 RTK 提供 `/fix` topic（`sensor_msgs/NavSatFix`），可在 `laserLoopClosure.cpp` 中订阅，转换为 UTM 坐标后作为 `gtsam::PriorFactor` 加入因子图。每个关键帧如果 RTK fix 有效，就加入一个绝对位置约束。这能从根本上抑制 Z 漂移，不需要等回环。
+
+### 命令（6/24）
+
+终端 1 — FAST-LIO2：
+source ~/mine_project/devel/setup.bash
+roslaunch fast_lio mapping_robosense16.launch
+
+终端 2 — 点云格式转换：
+source /opt/ros/noetic/setup.bash
+python3 ~/mine_project/src/LIO-SAM/scripts/republish_robosense.py
+
+终端 3 — 实时建模：
+source /opt/ros/noetic/setup.bash
+rm /tmp/meshes/*
+python3 ~/mine_project/src/FAST_LIO/scripts/realtime_mesher.py _interval:=30
+
+终端 4 — Web 查看器：
+cp ~/mine_project/src/FAST_LIO/scripts/web_viewer.html /tmp/meshes/viewer.html
+cd /tmp/meshes
+python3 -m http.server 8080
+浏览器打开 http://172.24.224.161:8080/viewer.html
+
+终端 5 — 播数据包（最后启动）：
+source /opt/ros/noetic/setup.bash
+rosbag play ~/mine_project/data/03_80m_other_sensor.bag -r 1 --clock

@@ -173,6 +173,21 @@ class RealtimeMesher:
         in_bbox = np.all((verts >= bbox_min) & (verts <= bbox_max), axis=1)
         mesh.remove_vertices_by_mask(~in_bbox)
 
+        # --- 距离裁剪 (切除稀疏区域的 Poisson 鼓包) ---
+        # 原理: 对每个网格顶点，计算到最近输入点的距离。
+        #       距离 > 阈值 → 没有数据支撑 → 删除。
+        #       路口另一侧只有几十个稀疏点的地方，Poisson 脑补的鼓包被切除。
+        pcd_tree = o3d.geometry.KDTreeFlann(pcd_ds)
+        verts = np.asarray(mesh.vertices)
+        mask = np.ones(len(verts), dtype=bool)
+        dist_thresh = self.voxel * 3.0  # 3×体素 = 无数据支撑
+        for i in range(len(verts)):
+            _, idx, dist2 = pcd_tree.search_knn_vector_3d(verts[i], 1)
+            if dist2[0] > dist_thresh * dist_thresh:
+                mask[i] = False
+        mesh.remove_vertices_by_mask(~mask)
+        rospy.loginfo(f"  distance clipped (>{dist_thresh:.2f}m): {len(mesh.triangles):,} faces")
+
         # --- 移除碎片 ---
         clusters, counts, _ = mesh.cluster_connected_triangles()
         counts = np.asarray(counts)
