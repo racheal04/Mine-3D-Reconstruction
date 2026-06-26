@@ -12,14 +12,17 @@ preprocess:
     blind: 2
 
 mapping:
-    acc_cov: 0.1
-    gyr_cov: 0.1
-    b_acc_cov: 0.0001
-    b_gyr_cov: 0.0001
+    # LITEF LCI-100N fiber-optic IMU specs (from 003_LITEF_imu_intrinsic.yaml)
+    # gyro noise 2.3e-5 rad/s, acc noise 6.6e-3 m/s^2
+    acc_cov: 0.007
+    gyr_cov: 0.00002
+    b_acc_cov: 0.00003
+    b_gyr_cov: 0.0000003
     fov_degree:    180
     det_range:     100.0
+    # Real 3d_lidar->imu extrinsic (from 003_With_software_tools.txt)
     extrinsic_est_en:  false
-    extrinsic_T: [0, 0, 0]
+    extrinsic_T: [-0.2681, -0.3797, 0.031]
     extrinsic_R: [1, 0, 0,
                   0, 1, 0,
                   0, 0, 1]
