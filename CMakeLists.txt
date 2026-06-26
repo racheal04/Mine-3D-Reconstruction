@@ -57,8 +57,14 @@ find_package(catkin REQUIRED COMPONENTS
 
 find_package(Eigen3 REQUIRED)
 find_package(PCL 1.8 REQUIRED)
+# GTSAM (pre-installed system package)
+set(GTSAM_INCLUDE_DIR "/usr/include/gtsam")
+find_library(GTSAM_LIB gtsam /usr/lib/x86_64-linux-gnu)
+find_library(GTSAM_UNSTABLE_LIB gtsam_unstable /usr/lib/x86_64-linux-gnu)
+set(GTSAM_LIBRARIES ${GTSAM_LIB} ${GTSAM_UNSTABLE_LIB} tbb)
 
 message(Eigen: ${EIGEN3_INCLUDE_DIR})
+message(GTSAM: ${GTSAM_INCLUDE_DIR}, libs: ${GTSAM_LIBRARIES})
 
 include_directories(
 	${catkin_INCLUDE_DIRS} 
@@ -96,10 +102,12 @@ target_link_libraries(laserLoopClosure
     ${catkin_LIBRARIES}
     ${PCL_LIBRARIES}
     ${EIGEN3_LIBRARIES}
+    ${GTSAM_LIBRARIES}
 )
 target_include_directories(laserLoopClosure PRIVATE
     include
     ${catkin_INCLUDE_DIRS}
     ${PCL_INCLUDE_DIRS}
     ${EIGEN3_INCLUDE_DIR}
+    ${GTSAM_INCLUDE_DIR}
 )
